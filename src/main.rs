@@ -88,7 +88,6 @@ where
     Ok(())
 }
 fn main() {
-    env_logger::init();
     let opts = Opts::parse();
     if opts.example {
         match opts.config_syntax.as_str() {
