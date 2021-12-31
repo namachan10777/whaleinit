@@ -1,0 +1,12 @@
+(
+    prehooks: [
+        Render(
+            path: "./example/test.yml",
+        ),
+    ],
+    services: [
+    ],
+    log_files: [
+        "/dev/stdout",
+    ],
+)
