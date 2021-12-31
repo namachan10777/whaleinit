@@ -1,10 +1,23 @@
 (
     prehooks: [
         Render(
-            path: "./example/test.yml",
+            path: "/etc/envoy/envoy.yml",
         ),
     ],
     services: [
+        (
+            bin: "/usr/bin/prometheus-node-exporter",
+            args: [],
+            envs: {},
+        ),
+        (
+            bin: "/usr/bin/envoy",
+            args: [
+                "--config.file",
+                "/etc/envoy/envoy.yml",
+            ],
+            envs: {},
+        ),
     ],
     log_files: [
         "/dev/stdout",
