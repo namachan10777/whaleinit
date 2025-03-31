@@ -19,8 +19,9 @@ fn init_subscriber<S: AsRef<str>>(filter: Option<S>, color: bool, json: bool) {
         tracing_subscriber::EnvFilter::builder()
             .with_default_directive(LevelFilter::INFO.into())
             .parse_lossy(filter)
+            .boxed()
     } else {
-        tracing_subscriber::EnvFilter::from_default_env()
+        LevelFilter::INFO.boxed()
     };
 
     let printer = tracing_subscriber::fmt::layer().with_ansi(color);
