@@ -154,11 +154,65 @@ fn set_sigactions() -> Result<(), Error> {
     Ok(())
 }
 
+fn reap_children() -> Result<(), Error> {
+    loop {
+        let status = match nix::sys::wait::wait() {
+            Ok(status) => status,
+            Err(e) if e == Errno::ECHILD => {
+                trace!("no child process");
+                return Ok(());
+            }
+            Err(e) => {
+                warn!(error = e.to_string(), "failed to wait child process");
+                continue;
+            }
+        };
+        match status {
+            nix::sys::wait::WaitStatus::Exited(pid, code) => {
+                info!(pid = pid.as_raw(), code, "child process exited");
+            }
+            nix::sys::wait::WaitStatus::Signaled(pid, signal, _) => {
+                info!(
+                    pid = pid.as_raw(),
+                    signal = signal.as_str(),
+                    "child process signaled"
+                );
+            }
+            nix::sys::wait::WaitStatus::Stopped(pid, signal) => {
+                info!(
+                    pid = pid.as_raw(),
+                    signal = signal.as_str(),
+                    "child process stopped"
+                );
+            }
+            nix::sys::wait::WaitStatus::Continued(pid) => {
+                info!(pid = pid.as_raw(), "child process continued");
+            }
+            nix::sys::wait::WaitStatus::StillAlive => {}
+            #[cfg(target_os = "linux")]
+            nix::sys::wait::WaitStatus::PtraceEvent(pid, signal, event) => {
+                info!(
+                    pid = pid.as_raw(),
+                    signal = signal.as_str(),
+                    event,
+                    "ptrace event"
+                );
+            }
+            #[cfg(target_os = "linux")]
+            nix::sys::wait::WaitStatus::PtraceSyscall(pid) => {
+                info!(pid = pid.as_raw(), "ptrace syscall");
+            }
+        }
+    }
+}
+
 pub fn run<P: AsRef<Path>>(service_dir: P) -> Result<(), Error> {
     let services = read_services(service_dir)?;
 
-    let mut wait_handlers = Vec::new();
 
+    set_sigactions()?;
+
+    let mut wait_handlers = Vec::new();
     for service in services {
         wait_handlers.push(std::thread::spawn(move || {
             if let Err(e) = handle(&service) {
@@ -171,53 +225,7 @@ pub fn run<P: AsRef<Path>>(service_dir: P) -> Result<(), Error> {
         }));
     }
 
-    set_sigactions()?;
-
-    std::thread::spawn(move || {
-        loop {
-            let Ok(status) = nix::sys::wait::wait().inspect_err(|e| {
-                warn!(error = e.to_string(), "failed to wait child process");
-            }) else {
-                continue;
-            };
-            match status {
-                nix::sys::wait::WaitStatus::Exited(pid, code) => {
-                    info!(pid = pid.as_raw(), code, "child process exited");
-                }
-                nix::sys::wait::WaitStatus::Signaled(pid, signal, _) => {
-                    info!(
-                        pid = pid.as_raw(),
-                        signal = signal.as_str(),
-                        "child process signaled"
-                    );
-                }
-                nix::sys::wait::WaitStatus::Stopped(pid, signal) => {
-                    info!(
-                        pid = pid.as_raw(),
-                        signal = signal.as_str(),
-                        "child process stopped"
-                    );
-                }
-                nix::sys::wait::WaitStatus::Continued(pid) => {
-                    info!(pid = pid.as_raw(), "child process continued");
-                }
-                nix::sys::wait::WaitStatus::StillAlive => {}
-                #[cfg(target_os = "linux")]
-                nix::sys::wait::WaitStatus::PtraceEvent(pid, signal, event) => {
-                    info!(
-                        pid = pid.as_raw(),
-                        signal = signal.as_str(),
-                        event,
-                        "ptrace event"
-                    );
-                }
-                #[cfg(target_os = "linux")]
-                nix::sys::wait::WaitStatus::PtraceSyscall(pid) => {
-                    info!(pid = pid.as_raw(), "ptrace syscall");
-                }
-            }
-        }
-    });
+    std::thread::spawn(reap_children);
 
     for wait_handler in wait_handlers {
         wait_handler.join().unwrap();

@@ -20,11 +20,11 @@ RUN mkdir -p /run/sshd
 RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
     ln -sf /dev/stderr /var/log/nginx/error.log
 COPY --from=builder /work/target/debug/whaleinit /whaleinit
-COPY examples/nginx.toml /etc/whaleinit/services/nginx.toml
-COPY examples/sshd.toml /etc/whaleinit/services/sshd.toml
-COPY examples/test_child.sh /usr/local/bin/test_child.sh
-COPY examples/test_parent.sh /usr/local/bin/test_parent.sh
-COPY examples/test.toml /etc/whaleinit/services/test.toml
+COPY test/nginx.toml /etc/whaleinit/services/nginx.toml
+COPY test/sshd.toml /etc/whaleinit/services/sshd.toml
+COPY test/test_child.sh /usr/local/bin/test_child.sh
+COPY test/test_parent.sh /usr/local/bin/test_parent.sh
+COPY test/test.toml /etc/whaleinit/services/test.toml
 
 ENTRYPOINT [ "/whaleinit" ]
 
