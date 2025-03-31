@@ -1,0 +1,2 @@
+title = "test process"
+exec = "/usr/local/bin/test_parent.sh"

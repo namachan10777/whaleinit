@@ -1,0 +1,3 @@
+title = "SSH Daemon"
+exec = "/usr/sbin/sshd"
+args = ["-D", "-E", "/dev/stderr"]
