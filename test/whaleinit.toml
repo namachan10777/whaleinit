@@ -1,0 +1,12 @@
+[[services]]
+title = "SSH Daemon"
+exec = "/usr/sbin/sshd"
+args = ["-D", "-E", "/dev/stderr"]
+
+[[services]]
+title = "Nginx"
+exec = "/usr/sbin/nginx"
+
+[[services]]
+title = "test process"
+exec = "/usr/local/bin/test_parent.sh"

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use tracing::{error, level_filters::LevelFilter};
 
@@ -9,8 +11,8 @@ struct Opts {
     log_color: bool,
     #[clap(long, env)]
     log_init_filter: Option<String>,
-    #[clap(short, long, env, default_value = "/etc/whaleinit/services")]
-    service_dir: String,
+    #[clap(short, long, env, default_value = "/etc/whaleinit.toml")]
+    config: PathBuf,
 }
 
 fn init_subscriber<S: AsRef<str>>(filter: Option<S>, color: bool, json: bool) {
@@ -41,7 +43,17 @@ fn main() {
     let opts = Opts::parse();
 
     init_subscriber(opts.log_init_filter.as_ref(), opts.log_color, opts.log_json);
-    if let Err(e) = whaleinit::run(&opts.service_dir) {
+    let Ok(config) = std::fs::read_to_string(&opts.config).inspect(|e| {
+        error!(error=e.to_string(), config=?opts.config, "read config");
+    }) else {
+        std::process::exit(1);
+    };
+    let Ok(config) = toml::from_str::<whaleinit::Config>(&config).inspect_err(|e| {
+        error!(error=e.to_string(), config=?opts.config, "parse config");
+    }) else {
+        std::process::exit(1);
+    };
+    if let Err(e) = whaleinit::run(config) {
         error!(error = e.to_string(), "fatal error");
     }
 }

@@ -12,8 +12,7 @@ RUN cargo chef cook --release
 COPY . .
 RUN cargo build --release
 
-FROM debian:bookworm-slim
-RUN mkdir -p /etc/whaleinit/services
+FROM ubuntu:noble
 COPY --from=builder /work/target/release/whaleinit /whaleinit
 
 ENTRYPOINT [ "/whaleinit" ]

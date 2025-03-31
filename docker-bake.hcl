@@ -3,7 +3,7 @@ variable "VERSION" {
 }
 
 target "default" {
-  dockerfile = "images/ubuntu-jammy/Dockerfile"
+  dockerfile = "images/ubuntu-noble/Dockerfile"
   tags = [
     "ghcr.io/namachan10777/whaleinit:${VERSION}",
     "ghcr.io/namachan10777/whaleinit:latest",
@@ -11,11 +11,11 @@ target "default" {
   platforms = ["linux/amd64", "linux/arm64"]
 }
 
-target "ubuntu-jammy" {
-  dockerfile = "images/ubuntu-jammy/Dockerfile"
+target "ubuntu-noble" {
+  dockerfile = "images/ubuntu-noble/Dockerfile"
   tags = [
-    "ghcr.io/namachan10777/whaleinit:ubuntu-jammy",
-    "ghcr.io/namachan10777/whaleinit:ubuntu-jammy-${VERSION}"
+    "ghcr.io/namachan10777/whaleinit:ubuntu-noble",
+    "ghcr.io/namachan10777/whaleinit:ubuntu-noble-${VERSION}"
   ]
   platforms = ["linux/amd64", "linux/arm64"]
 }

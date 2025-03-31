@@ -6,18 +6,23 @@ use nix::{
 use serde::Deserialize;
 use std::{
     io::{BufRead as _, Read},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Stdio,
 };
 use tracing::{error, info, trace, warn};
 use valuable::Valuable;
 
 #[derive(Deserialize, Valuable)]
-struct ServiceConfig {
-    title: String,
-    exec: String,
+pub struct ServiceConfig {
+    pub title: String,
+    pub exec: String,
     #[serde(default)]
-    args: Vec<String>,
+    pub args: Vec<String>,
+}
+
+#[derive(Deserialize, Valuable)]
+pub struct Config {
+    pub services: Vec<ServiceConfig>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -35,28 +40,6 @@ pub enum Error {
     },
     #[error("Failed to set signal handler: {signal} {errno}")]
     SetSigAction { errno: Errno, signal: Signal },
-}
-
-fn read_services<P: AsRef<Path>>(service_dir: P) -> Result<Vec<ServiceConfig>, Error> {
-    let mut services = Vec::new();
-    for file in std::fs::read_dir(service_dir).map_err(Error::ReadServiceDir)? {
-        let entry = file.map_err(Error::ReadServiceDir)?;
-        if !entry
-            .file_type()
-            .map_err(|e| Error::ReadServiceFile(entry.path(), e))?
-            .is_file()
-        {
-            trace!(path=?entry.path(), "Skipping non-file entry");
-            continue;
-        }
-        let service = std::fs::read_to_string(entry.path())
-            .map_err(|e| Error::ReadServiceFile(entry.path(), e))?;
-        let service: ServiceConfig =
-            toml::from_str(&service).map_err(|e| Error::ParseServiceFile(entry.path(), e))?;
-        trace!(service=service.as_value(), path=?entry.path(), "service is defined");
-        services.push(service);
-    }
-    Ok(services)
 }
 
 fn print_log<R: Read>(out: R, title: &str, log_type: &str) {
@@ -206,13 +189,11 @@ fn reap_children() -> Result<(), Error> {
     }
 }
 
-pub fn run<P: AsRef<Path>>(service_dir: P) -> Result<(), Error> {
-    let services = read_services(service_dir)?;
-
+pub fn run(config: Config) -> Result<(), Error> {
     set_sigactions()?;
 
     let mut wait_handlers = Vec::new();
-    for service in services {
+    for service in config.services {
         wait_handlers.push(std::thread::spawn(move || {
             if let Err(e) = handle(&service) {
                 error!(
