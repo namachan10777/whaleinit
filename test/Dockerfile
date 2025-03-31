@@ -1,12 +1,12 @@
-FROM rust:1-slim-bookworm as rust
+FROM rust:1-slim-bookworm AS rust
 RUN cargo install cargo-chef
 WORKDIR /work
 
-FROM rust as planner
+FROM rust AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM rust as builder
+FROM rust AS builder
 COPY --from=planner /work/recipe.json recipe.json
 RUN cargo chef cook
 COPY . .
