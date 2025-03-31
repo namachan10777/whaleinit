@@ -33,6 +33,7 @@ jobs:
           mkdir -p artifacts
           cp target/x86_64-unknown-linux-musl/release/whaleinit artifacts/whaleinit-x86_64-linux-musl
           cd artifacts
+          strip whaleinit-x86_64-linux-musl
           sha256sum whaleinit-x86_64-linux-musl > whaleinit-x86_64-linux-musl.sha256
 
       - name: Upload artifact
@@ -68,6 +69,7 @@ jobs:
           mkdir -p artifacts
           cp target/aarch64-unknown-linux-musl/release/whaleinit artifacts/whaleinit-aarch64-linux-musl
           cd artifacts
+          strip whaleinit-aarch64-linux-musl
           sha256sum whaleinit-aarch64-linux-musl > whaleinit-aarch64-linux-musl.sha256
 
       - name: Upload artifact
