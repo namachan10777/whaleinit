@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-x86_64:
+    name: Build x86_64 binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
+
+      - name: Build x86_64 binary
+        run: cargo zigbuild --release --target x86_64-unknown-linux-musl
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifacts
+          cp target/x86_64-unknown-linux-musl/release/whaleinit artifacts/whaleinit-x86_64-linux-musl
+          cd artifacts
+          sha256sum whaleinit-x86_64-linux-musl > whaleinit-x86_64-linux-musl.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-binary
+          path: artifacts/whaleinit-x86_64-linux-musl*
+
+  build-aarch64:
+    name: Build aarch64 binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
+
+      - name: Build aarch64 binary
+        run: cargo zigbuild --release --target aarch64-unknown-linux-musl
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifacts
+          cp target/aarch64-unknown-linux-musl/release/whaleinit artifacts/whaleinit-aarch64-linux-musl
+          cd artifacts
+          sha256sum whaleinit-aarch64-linux-musl > whaleinit-aarch64-linux-musl.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aarch64-binary
+          path: artifacts/whaleinit-aarch64-linux-musl*
+
+  release:
+    name: Create Release
+    needs: [build-x86_64, build-aarch64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: x86_64-binary
+          path: artifacts
+
+      - name: Download aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: aarch64-binary
+          path: artifacts
+
+      - name: Create combined checksum file
+        run: |
+          cd artifacts
+          cat *.sha256 > SHA256SUMS
+          rm *.sha256
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          files: |
+            artifacts/whaleinit-x86_64-linux-musl
+            artifacts/whaleinit-aarch64-linux-musl
+            artifacts/SHA256SUMS
+          draft: false
+          prerelease: false
+          generate_release_notes: true
