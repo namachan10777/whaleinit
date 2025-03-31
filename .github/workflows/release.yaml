@@ -20,6 +20,8 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl
 
+      - uses: mlugg/setup-zig@v1
+
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild
 
@@ -52,6 +54,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-musl
+
+      - uses: mlugg/setup-zig@v1
 
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild
