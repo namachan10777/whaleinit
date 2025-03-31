@@ -158,7 +158,7 @@ fn reap_children() -> Result<(), Error> {
     loop {
         let status = match nix::sys::wait::wait() {
             Ok(status) => status,
-            Err(e) if e == Errno::ECHILD => {
+            Err(Errno::ECHILD) => {
                 trace!("no child process");
                 return Ok(());
             }
@@ -208,7 +208,6 @@ fn reap_children() -> Result<(), Error> {
 
 pub fn run<P: AsRef<Path>>(service_dir: P) -> Result<(), Error> {
     let services = read_services(service_dir)?;
-
 
     set_sigactions()?;
 
