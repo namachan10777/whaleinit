@@ -18,6 +18,8 @@ pub struct ServiceConfig {
     pub exec: String,
     #[serde(default)]
     pub args: Vec<String>,
+    #[serde(default)]
+    pub essential: bool,
 }
 
 #[derive(Deserialize, Valuable)]
@@ -40,6 +42,42 @@ pub enum Error {
     },
     #[error("Failed to set signal handler: {signal} {errno}")]
     SetSigAction { errno: Errno, signal: Signal },
+}
+
+fn trigger_shutdown(initial: Signal) {
+    let signal_step = [Signal::SIGTERM, Signal::SIGINT, Signal::SIGKILL];
+    let mut step = signal_step
+        .iter()
+        .position(|s| *s == initial)
+        .unwrap_or_else(|| {
+            info!(signal = initial.as_str(), "Send signal to all processes");
+            if let Err(e) = nix::sys::signal::kill(Pid::from_raw(-1), initial) {
+                error!(
+                    error = e.to_string(),
+                    signal = initial.as_str(),
+                    "failed to send signal"
+                );
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                0
+            } else {
+                0
+            }
+        });
+
+    while let Some(signal) = signal_step.get(step) {
+        info!(signal = signal.as_str(), "Send signal to all processes");
+        if let Err(e) = nix::sys::signal::kill(Pid::from_raw(-1), *signal) {
+            error!(
+                error = e.to_string(),
+                signal = signal.as_str(),
+                "failed to send signal"
+            );
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            step += 1;
+        } else {
+            break;
+        }
+    }
 }
 
 fn print_log<R: Read>(out: R, title: &str, log_type: &str) {
@@ -80,10 +118,6 @@ fn handle(service: &ServiceConfig) -> Result<(), Error> {
     let stderr = child.stderr.take().unwrap();
 
     std::thread::scope(|scope| {
-        let waiter = scope.spawn(move || {
-            let _ = child.wait();
-        });
-
         scope.spawn(move || {
             print_log(stdout, &service.title, "stdout");
         });
@@ -92,7 +126,29 @@ fn handle(service: &ServiceConfig) -> Result<(), Error> {
             print_log(stderr, &service.title, "stderr");
         });
 
-        waiter.join().unwrap();
+        match child.wait() {
+            Ok(code) => {
+                info!(
+                    code = code.code(),
+                    service = service.title,
+                    "service exited"
+                );
+            }
+            Err(e) if e.raw_os_error() == Some(nix::libc::ECHILD) => {
+                trace!("no child process");
+            }
+            Err(e) => {
+                warn!(
+                    e = e.to_string(),
+                    service = service.title,
+                    "failed to wait for child process"
+                );
+            }
+        }
+        if service.essential {
+            info!("essential service exited");
+            trigger_shutdown(Signal::SIGTERM);
+        }
     });
 
     Ok(())

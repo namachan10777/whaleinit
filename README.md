@@ -12,6 +12,7 @@ It handles reaping zombie processes, propagates `SIGTERM` and `SIGINT` signals, 
 title = "nginx"
 exec = "/usr/sbin/nginx"
 args = ["-D"]
+essential = true
 
 [[services]]
 title = "sshd"
