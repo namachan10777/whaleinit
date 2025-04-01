@@ -1,3 +1,7 @@
+[[templates]]
+src = "/usr/local/bin/test_parent.sh"
+dest = "/usr/local/bin/test_parent.sh"
+
 [[services]]
 title = "SSH Daemon"
 exec = "/usr/sbin/sshd"
@@ -8,6 +12,6 @@ title = "Nginx"
 exec = "/usr/sbin/nginx"
 
 [[services]]
-title = "test process"
+title = "{{ env.TEST_SERVICE_NAME }}"
 exec = "/usr/local/bin/test_parent.sh"
 essential = true

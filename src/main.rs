@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use tracing::{error, level_filters::LevelFilter};
+use tracing::{error, info, level_filters::LevelFilter};
+use whaleinit::Config;
 
 #[derive(Parser)]
 struct Opts {
@@ -43,17 +44,50 @@ fn main() {
     let opts = Opts::parse();
 
     init_subscriber(opts.log_init_filter.as_ref(), opts.log_color, opts.log_json);
+
     let Ok(config) = std::fs::read_to_string(&opts.config).inspect_err(|e| {
         error!(error=e.to_string(), config=?opts.config, "read config");
     }) else {
         std::process::exit(1);
     };
+
+    let template_context = whaleinit::TemplateContext::build();
+    let Ok(config) = template_context.render(&config).inspect_err(|e| {
+        error!(error=e.to_string(), config=?opts.config, "render config");
+    }) else {
+        std::process::exit(1);
+    };
+
     let Ok(config) = toml::from_str::<whaleinit::Config>(&config).inspect_err(|e| {
         error!(error=e.to_string(), config=?opts.config, "parse config");
     }) else {
         std::process::exit(1);
     };
-    if let Err(e) = whaleinit::run(config) {
+
+    let Config {
+        services,
+        templates,
+    } = config;
+
+    for template in templates {
+        if let Err(e) = template_context.render_template(&template) {
+            error!(
+                error = e.to_string(),
+                src = template.src,
+                dest = template.dest,
+                "render template"
+            );
+            std::process::exit(1);
+        } else {
+            info!(
+                src = template.src,
+                dest = template.dest,
+                "template rendered"
+            );
+        }
+    }
+
+    if let Err(e) = whaleinit::run(services) {
         error!(error = e.to_string(), "fatal error");
     }
 }
