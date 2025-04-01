@@ -43,7 +43,7 @@ fn main() {
     let opts = Opts::parse();
 
     init_subscriber(opts.log_init_filter.as_ref(), opts.log_color, opts.log_json);
-    let Ok(config) = std::fs::read_to_string(&opts.config).inspect(|e| {
+    let Ok(config) = std::fs::read_to_string(&opts.config).inspect_err(|e| {
         error!(error=e.to_string(), config=?opts.config, "read config");
     }) else {
         std::process::exit(1);
