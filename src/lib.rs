@@ -1,3 +1,4 @@
+use liquid::model::KString;
 use nix::{
     errno::Errno,
     sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal},
@@ -5,7 +6,8 @@ use nix::{
 };
 use serde::Deserialize;
 use std::{
-    io::{BufRead as _, Read},
+    io::{BufRead as _, Read, Write},
+    os::unix::fs::{MetadataExt, OpenOptionsExt as _, PermissionsExt as _},
     path::PathBuf,
     process::Stdio,
 };
@@ -23,8 +25,16 @@ pub struct ServiceConfig {
 }
 
 #[derive(Deserialize, Valuable)]
+pub struct Template {
+    pub src: String,
+    pub dest: String,
+}
+
+#[derive(Deserialize, Valuable)]
 pub struct Config {
     pub services: Vec<ServiceConfig>,
+    #[serde(default)]
+    pub templates: Vec<Template>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -42,6 +52,14 @@ pub enum Error {
     },
     #[error("Failed to set signal handler: {signal} {errno}")]
     SetSigAction { errno: Errno, signal: Signal },
+    #[error("Failed to read template source: {src}: {error}")]
+    ReadTemplateSource { src: String, error: std::io::Error },
+    #[error("Failed to render template: {src}: {error}")]
+    RenderTemplate { src: String, error: liquid::Error },
+    #[error("Failed to write template: {dest}: {error}")]
+    WriteTemplate { dest: String, error: std::io::Error },
+    #[error("Failed to change template ownership: {dest}: {error}")]
+    ChangeTemplateOwnership { dest: String, error: std::io::Error },
 }
 
 fn trigger_shutdown(initial: Signal) {
@@ -245,11 +263,85 @@ fn reap_children() -> Result<(), Error> {
     }
 }
 
-pub fn run(config: Config) -> Result<(), Error> {
+pub struct TemplateContext {
+    parser: liquid::Parser,
+    ctx: liquid::Object,
+}
+
+impl TemplateContext {
+    pub fn build() -> Self {
+        let env = std::env::vars().map(|(name, var)| {
+            let key = KString::from_string(name);
+            let var = liquid::model::Value::scalar(var);
+            (key, var)
+        });
+        let env = liquid::Object::from_iter(env);
+        let ctx = liquid::object!({
+            "env": env,
+        });
+        Self {
+            parser: liquid::ParserBuilder::with_stdlib()
+                .build()
+                .expect("failed to build liquid parser"),
+            ctx,
+        }
+    }
+
+    pub fn render(&self, src: &str) -> Result<String, liquid::Error> {
+        let template = self.parser.parse(src)?;
+        let rendered = template.render(&self.ctx)?;
+        Ok(rendered)
+    }
+
+    pub fn render_template(&self, template: &Template) -> Result<(), Error> {
+        let src =
+            std::fs::read_to_string(&template.src).map_err(|e| Error::ReadTemplateSource {
+                src: template.src.clone(),
+                error: e,
+            })?;
+        let content = self.render(&src).map_err(|e| Error::RenderTemplate {
+            src: template.src.clone(),
+            error: e,
+        })?;
+        let meta = std::fs::metadata(&template.src).map_err(|e| Error::ReadTemplateSource {
+            src: template.src.clone(),
+            error: e,
+        })?;
+
+        let mut outfile = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(meta.permissions().mode())
+            .open(&template.dest)
+            .map_err(|e| Error::WriteTemplate {
+                dest: template.dest.clone(),
+                error: e,
+            })?;
+
+        outfile
+            .write_all(content.as_bytes())
+            .map_err(|e| Error::WriteTemplate {
+                dest: template.dest.clone(),
+                error: e,
+            })?;
+
+        std::os::unix::fs::chown(&template.dest, Some(meta.uid()), Some(meta.gid())).map_err(
+            |e| Error::ChangeTemplateOwnership {
+                dest: template.dest.clone(),
+                error: e,
+            },
+        )?;
+
+        Ok(())
+    }
+}
+
+pub fn run<I: IntoIterator<Item = ServiceConfig>>(services: I) -> Result<(), Error> {
     set_sigactions()?;
 
     let mut wait_handlers = Vec::new();
-    for service in config.services {
+    for service in services {
         wait_handlers.push(std::thread::spawn(move || {
             if let Err(e) = handle(&service) {
                 error!(
