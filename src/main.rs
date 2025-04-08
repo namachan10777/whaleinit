@@ -67,6 +67,7 @@ fn main() {
     let Config {
         services,
         templates,
+        prehooks,
     } = config;
 
     for template in templates {
@@ -84,6 +85,20 @@ fn main() {
                 dest = template.dest,
                 "template rendered"
             );
+        }
+    }
+
+    for prehook in prehooks {
+        if let Err(e) = prehook.run().inspect_err(|e| {
+            error!(error = e.to_string(), "run prehook");
+        }) {
+            error!(
+                error = e.to_string(),
+                prehook = prehook.display_name(),
+                "run prehook"
+            );
+        } else {
+            info!(prehook = prehook.display_name(), "prehook run");
         }
     }
 

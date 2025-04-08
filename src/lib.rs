@@ -4,7 +4,7 @@ use nix::{
     sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal},
     unistd::Pid,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     io::{BufRead as _, Read, Write},
     os::unix::fs::{MetadataExt, OpenOptionsExt as _, PermissionsExt as _},
@@ -30,11 +30,22 @@ pub struct Template {
     pub dest: String,
 }
 
+#[derive(Serialize, Deserialize, Valuable)]
+pub struct Prehook {
+    pub exec: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
 #[derive(Deserialize, Valuable)]
 pub struct Config {
     pub services: Vec<ServiceConfig>,
     #[serde(default)]
     pub templates: Vec<Template>,
+    #[serde(default)]
+    pub prehooks: Vec<Prehook>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -60,6 +71,8 @@ pub enum Error {
     WriteTemplate { dest: String, error: std::io::Error },
     #[error("Failed to change template ownership: {dest}: {error}")]
     ChangeTemplateOwnership { dest: String, error: std::io::Error },
+    #[error("Failed to run prehook: {src}: {error}")]
+    RunPrehook { src: String, error: std::io::Error },
 }
 
 fn trigger_shutdown(initial: Signal) {
@@ -360,4 +373,88 @@ pub fn run<I: IntoIterator<Item = ServiceConfig>>(services: I) -> Result<(), Err
     }
 
     Ok(())
+}
+
+impl Prehook {
+    pub fn display_name(&self) -> String {
+        self.title.clone().unwrap_or_else(|| {
+            let mut title = self.exec.clone();
+            if !self.args.is_empty() {
+                title.push(' ');
+                title.push_str(&self.args.join(" "));
+            }
+            title
+        })
+    }
+
+    pub fn run(&self) -> Result<(), Error> {
+        let mut child = std::process::Command::new(&self.exec)
+            .args(&self.args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| Error::RunPrehook {
+                src: self.display_name(),
+                error: e,
+            })?;
+
+        std::thread::scope(|scope| {
+            let stderr = child.stderr.take();
+            let stdout = child.stdout.take();
+
+            scope.spawn(move || {
+                if let Some(stderr) = stderr {
+                    print_log(stderr, &self.display_name(), "stderr");
+                }
+            });
+
+            scope.spawn(move || {
+                if let Some(stdout) = stdout {
+                    print_log(stdout, &self.display_name(), "stdout");
+                }
+            });
+
+            match child.wait() {
+                Ok(code) if code.success() => {
+                    info!(
+                        code = code.code(),
+                        prehook = self.display_name(),
+                        "prehook ok"
+                    );
+                    Ok(())
+                }
+                Ok(code) => {
+                    info!(
+                        code = code.code(),
+                        prehook = self.display_name(),
+                        "prehook error"
+                    );
+                    let Some(code) = code.code() else {
+                        return Err(Error::RunPrehook {
+                            src: self.display_name(),
+                            error: std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                "prehook terminated by signal ",
+                            ),
+                        });
+                    };
+                    Err(Error::RunPrehook {
+                        src: self.display_name(),
+                        error: std::io::Error::from_raw_os_error(code),
+                    })
+                }
+                Err(e) => {
+                    error!(
+                        error = e.to_string(),
+                        prehook = self.display_name(),
+                        "failed to wait for prehook"
+                    );
+                    Err(Error::RunPrehook {
+                        src: self.display_name(),
+                        error: e,
+                    })
+                }
+            }
+        })
+    }
 }

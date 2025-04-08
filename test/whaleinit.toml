@@ -1,3 +1,6 @@
+[[prehooks]]
+exec = "/usr/local/bin/prehook.sh"
+
 [[templates]]
 src = "/usr/local/bin/test_parent.sh"
 dest = "/usr/local/bin/test_parent.sh"

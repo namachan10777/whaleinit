@@ -23,6 +23,7 @@ COPY --from=builder /work/target/debug/whaleinit /whaleinit
 COPY test/test_child.sh /usr/local/bin/test_child.sh
 COPY test/test_parent.sh /usr/local/bin/test_parent.sh
 COPY test/whaleinit.toml /etc/whaleinit.toml
+COPY test/prehook.sh /usr/local/bin/prehook.sh
 
 ENTRYPOINT [ "/whaleinit" ]
 
